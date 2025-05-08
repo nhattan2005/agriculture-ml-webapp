@@ -39,14 +39,7 @@ This is a web-based machine learning application that predicts the most suitable
 
 ## 🚀 How to Run the Project
 
-### 1. Clone the repository
-
 ```bash
 git clone https://github.com/your-username/crop-recommendation-system.git
 cd crop-recommendation-system
-
-### 2. Run the Flask app
-```bash
 python app.py
-
-Then open http://127.0.0.1:5000 in your browser.
