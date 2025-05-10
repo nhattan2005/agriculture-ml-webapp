@@ -13,7 +13,7 @@
     {% for field in ['N', 'P', 'K', 'temperature', 'humidity', 'ph', 'rainfall'] %}
       <div class="col-md-6">
         <label class="form-label">{{ field | capitalize }}</label>
-        <input type="number" step="any" class="form-control" name="{{ field }}" required>
+        <input type="number" step="any" class="form-control" name="{{ field }}" value="{{ values[field] if values else '' }}" required>
       </div>
     {% endfor %}
     <div class="col-12">
@@ -21,10 +21,22 @@
     </div>
   </form>
 
-  {% if crop %}
-    <div class="alert alert-success mt-4">
-      <h4>✅ Recommended Crop: <strong>{{ crop }}</strong></h4>
-      <p>Based on your input parameters.</p>
+  {% if results %}
+    <div class="mt-5">
+      <h3>🌾 Prediction Results</h3>
+      <div class="row">
+        {% for model_name, crop in results.items() %}
+          <div class="col-md-4 mt-4">
+            <div class="card">
+              <img src="{{ url_for('static', filename='images/' + crop + '.jpg') }}" class="card-img-top" alt="{{ crop }}" onerror="this.src='https://via.placeholder.com/300x200?text=No+Image';">
+              <div class="card-body">
+                <h5 class="card-title">{{ crop | capitalize }}</h5>
+                <p class="card-text"><strong>Model:</strong> {{ model_name }}</p>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
     </div>
   {% endif %}
 </div>
