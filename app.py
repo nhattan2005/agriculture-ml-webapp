@@ -55,6 +55,12 @@ def predict():
                 scaled = obj['scaler'].transform(data)
                 # print(f"Scaled data shape: {scaled.shape}")
                 pred = obj['model'].predict(scaled)
+                if model_name == 'KNN (Scratch)':
+                    pred = obj['model'].predict_batch(scaled)
+                elif model_name == 'Logistic Regression (Scratch)':
+                    pred = obj['model'].predict_classes(scaled)
+                else:
+                    pred = obj['model'].predict(scaled)
                 # print(f"Raw prediction output: {pred}, type: {type(pred)}")
                 # Ensure pred is a 1D NumPy array
                 pred = np.array(pred, dtype=object).flatten()
