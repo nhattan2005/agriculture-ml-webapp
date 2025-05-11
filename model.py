@@ -4,59 +4,135 @@ import math
 import random
 import pandas as pd
 from sklearn.metrics import accuracy_score
+import cvxopt
+import cvxopt.solvers
 
-# ---------------- SVM (One-vs-All) ----------------
-class SVMFromScratch:
-    def __init__(self, learning_rate=0.001, lambda_param=0.01, n_iters=1000):
-        self.learning_rate = learning_rate
-        self.lambda_param = lambda_param
-        self.n_iters = n_iters
-        self.w = None
-        self.b = None
+class SVM:
+    def __init__(self, kernel='linear', C=1.0, gamma=0.1, degree=3):
+        self.kernel = kernel
+        self.C = float(C) if C is not None else None
+        self.gamma = float(gamma) if gamma is not None else 0.1
+        self.degree = int(degree) if degree is not None else 3
+        self.models = []  # Store one-vs-rest models
+        self.classes = None
+        self.label_encoder = None
 
-    def fit(self, X, y):
+    def linear_kernel(self, x1, x2):
+        return np.dot(x1, x2)
+
+    def polynomial_kernel(self, x, y, C=1.0, d=3):
+        return (np.dot(x, y) + C) ** d
+
+    def gaussian_kernel(self, x, y, gamma=0.1):
+        return np.exp(-gamma * np.linalg.norm(x - y) ** 2)
+
+    def compute_kernel(self, x1, x2):
+        if self.kernel == 'linear':
+            return self.linear_kernel(x1, x2)
+        elif self.kernel == 'polynomial':
+            return self.polynomial_kernel(x1, x2, C=1.0, d=self.degree)
+        elif self.kernel == 'gaussian':
+            return self.gaussian_kernel(x1, x2, gamma=self.gamma)
+        else:
+            raise ValueError("Unsupported kernel")
+
+    def fit_binary(self, X, y):
         n_samples, n_features = X.shape
-        y_ = np.where(y <= 0, -1, 1)
-        self.w, self.b = np.zeros(n_features), 0
 
-        for _ in range(self.n_iters):
-            for idx, x_i in enumerate(X):
-                condition = y_[idx] * (np.dot(x_i, self.w) - self.b) >= 1
-                if condition:
-                    self.w -= self.learning_rate * (2 * self.lambda_param * self.w)
-                else:
-                    self.w -= self.learning_rate * (2 * self.lambda_param * self.w - np.dot(x_i, y_[idx]))
-                    self.b -= self.learning_rate * y_[idx]
+        # Compute Gram matrix
+        K = np.zeros((n_samples, n_samples))
+        for i in range(n_samples):
+            for j in range(n_samples):
+                K[i, j] = self.compute_kernel(X[i], X[j])
 
-    def decision_function(self, X):
-        return np.dot(X, self.w) - self.b
+        # Convert to cvxopt format
+        P = cvxopt.matrix(np.outer(y, y) * K)
+        q = cvxopt.matrix(np.ones(n_samples) * -1)
+        A = cvxopt.matrix(y, (1, n_samples), 'd')
+        b = cvxopt.matrix(0.0)
 
-    def predict(self, X):
-        return np.sign(self.decision_function(X))
+        if self.C is None:
+            G = cvxopt.matrix(np.diag(np.ones(n_samples) * -1))
+            h = cvxopt.matrix(np.zeros(n_samples))
+        else:
+            tmp1 = np.diag(np.ones(n_samples) * -1)
+            tmp2 = np.identity(n_samples)
+            G = cvxopt.matrix(np.vstack((tmp1, tmp2)))
+            tmp1 = np.zeros(n_samples)
+            tmp2 = np.ones(n_samples) * self.C
+            h = cvxopt.matrix(np.hstack((tmp1, tmp2)))
 
+        # Solver options
+        cvxopt.solvers.options['show_progress'] = False
+        cvxopt.solvers.options['abstol'] = 1e-10
+        cvxopt.solvers.options['reltol'] = 1e-10
+        cvxopt.solvers.options['feastol'] = 1e-10
 
-class MultiClassSVM:
-    def __init__(self, learning_rate=0.001, lambda_param=0.01, n_iters=1000):
-        self.learning_rate = learning_rate
-        self.lambda_param = lambda_param
-        self.n_iters = n_iters
-        self.models = {}
-        self.classes = []
+        # Solve QP problem
+        solution = cvxopt.solvers.qp(P, q, G, h, A, b)
+
+        # Lagrange multipliers
+        alphas = np.ravel(solution['x'])
+
+        # Support vectors
+        sv = alphas > 1e-5
+        ind = np.arange(len(alphas))[sv]
+        model = {
+            'alphas': alphas[sv],
+            'sv': X[sv],
+            'sv_y': y[sv],
+            'b': 0.0
+        }
+
+        # Compute bias
+        for n in range(len(model['alphas'])):
+            model['b'] += model['sv_y'][n]
+            model['b'] -= np.sum(model['alphas'] * model['sv_y'] * K[ind[n], sv])
+        model['b'] /= len(model['alphas'])
+
+        # Weight vector for linear kernel
+        if self.kernel == 'linear':
+            model['w'] = np.zeros(n_features)
+            for n in range(len(model['alphas'])):
+                model['w'] += model['alphas'][n] * model['sv_y'][n] * model['sv'][n]
+        else:
+            model['w'] = None
+
+        return model
 
     def fit(self, X, y):
         self.classes = np.unique(y)
+        self.models = []
+
+        # One-vs-rest strategy
         for cls in self.classes:
+            # Create binary labels: +1 for current class, -1 for others
             y_binary = np.where(y == cls, 1, -1)
-            model = SVMFromScratch(self.learning_rate, self.lambda_param, self.n_iters)
-            model.fit(X, y_binary)
-            self.models[cls] = model
+            model = self.fit_binary(X, y_binary)
+            model['class'] = cls
+            self.models.append(model)
+
+    def project(self, X, model):
+        if model['w'] is not None:
+            return np.dot(X, model['w']) + model['b']
+        else:
+            y_predict = np.zeros(len(X))
+            for i in range(len(X)):
+                s = 0
+                for a, sv_y, sv in zip(model['alphas'], model['sv_y'], model['sv']):
+                    s += a * sv_y * self.compute_kernel(X[i], sv)
+                y_predict[i] = s
+            return y_predict + model['b']
 
     def predict(self, X):
-        return np.array([
-            max(self.models.items(), key=lambda item: item[1].decision_function([x])[0])[0]
-            for x in X
-        ])
-
+        # Compute scores for each class
+        scores = np.zeros((len(X), len(self.classes)))
+        for i, model in enumerate(self.models):
+            scores[:, i] = self.project(X, model)
+        
+        # Return class with highest score
+        class_indices = np.argmax(scores, axis=1)
+        return np.array([self.classes[i] for i in class_indices])
 
 # ---------------- KNN ----------------
 class KNN:

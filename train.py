@@ -5,7 +5,7 @@ from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.metrics import accuracy_score
 import pickle
 
-from model import MultiClassSVM, MultiClassLogisticRegression, KNN, DecisionTreeClassifierFromScratch, RandomForestClassifierFromScratch
+from model import SVM, MultiClassLogisticRegression, KNN, DecisionTreeClassifierFromScratch, RandomForestClassifierFromScratch
 
 # Load dataset
 df = pd.read_csv('Crop_recommendation.csv')
@@ -24,11 +24,11 @@ X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, 
 
 # List of models to train
 models = {
-    'svm_scratch_model.pkl': MultiClassSVM(),
+    # 'svm_scratch_model.pkl': SVM(kernel='polynomial', C=1.0, gamma=0.1, degree=3),
     # 'knn_scratch_model.pkl': KNN(k=3),  # Ensure k is specified
     # 'dt_scratch_model.pkl': DecisionTreeClassifierFromScratch(is_continuous_list=[True, True, True, True, True, True, True]),
     # 'rf_scratch_model.pkl': RandomForestClassifierFromScratch(n_trees=20, max_features=3, is_continuous_list=[True, True, True, True, True, True, True]),  # Use n_trees instead of n_estimators
-    # 'logistic_scratch_model.pkl': MultiClassLogisticRegression()
+    'logistic_scratch_model.pkl': MultiClassLogisticRegression()
 }
 
 for filename, model in models.items():
